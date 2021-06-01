@@ -8,7 +8,7 @@ const LOADING_ERROR_URL =
   "https://jhusain.github.io/reddit-image-viewer/error.png";
 
 const Observable = Rx.Observable;
-
+// debugger;
 // debugger;
 // function which returns an array of image URLs for a given reddit sub
 // getSubImages("pics") ->
@@ -18,7 +18,7 @@ const Observable = Rx.Observable;
 //   ...
 // ]
 function getSubImages(sub) {
-  console.log("getSubImages");
+  console.warn("getSubImages");
   const cachedImages = localStorage.getItem(sub);
   if (cachedImages) {
     console.log({ cachedImages });
@@ -59,12 +59,11 @@ const backClick$ = Observable.fromEvent(backButton, "click");
 const nextClick$ = Observable.fromEvent(nextButton, "click");
 const subChange$ = Observable.fromEvent(subSelect, "change");
 
+/** stream of sub changes with initial sub change */
 const sub$ = Observable.concat(
   Observable.of(subSelect.value),
   subChange$.map((e) => e.target.value)
 );
-
-// image navigations stream
 
 /*
 const images = Observable.of(
@@ -72,52 +71,57 @@ const images = Observable.of(
 );
 */
 
-const imagePreload$ = (url) => {
-  console.log("imagePreload$");
-  return new Observable((observer) => {
-    console.log("imagePreload$ observable", { url });
-    const loaderImage = new Image();
-    loaderImage.onerror = function (ev) {
-      // image failed to load
-      console.log("image load error", { url });
-      observer.error(ev);
-    };
-    loaderImage.onload = function () {
-      // image loaded successfully
-      console.log("image loaded", { url });
-      observer.next(url);
-      observer.complete();
-    };
-    loaderImage.src = url;
-    // observer.next(url);
-    return () => console.log("unsub from imagePreload$");
-  })
-    .retry(2)
-    .catch((e) => {
-      console.log("image$ catch", { e });
-      return Observable.of(fallbackUrl);
-    });
-};
-
+/** Fallback if image could not be loaded */
 const fallbackUrl = "https://jhusain.github.io/reddit-image-viewer/error.png";
 
-const navigation$ = Observable.merge(
+/** Util to create an image preload observable */
+const imagePreload$ = (url) => {
+  console.log("imagePreload$");
+  return (
+    new Observable((observer) => {
+      console.log("imagePreload$ observable", { url });
+      const loaderImage = new Image();
+      loaderImage.onerror = function (ev) {
+        // image failed to load
+        console.log("image load error", { url });
+        observer.error(ev);
+      };
+      loaderImage.onload = function () {
+        // image loaded successfully
+        console.log("image loaded", { url });
+        observer.next(url);
+        observer.complete();
+      };
+      loaderImage.src = url;
+      // observer.next(url);
+      return () => console.log("unsub from imagePreload$");
+    })
+      // .retry(2)
+      .catch((e) => {
+        console.log("imagePreload$ error preloading image", { url });
+        return Observable.of(fallbackUrl);
+      })
+  );
+};
+
+const actions$ = Observable.merge(
   backClick$.map((e) => -1),
   nextClick$.map((e) => 1),
   sub$.map((e) => 0)
-);
+).map((action) => {
+  loading.style.visibility = "visible";
+  return action;
+});
 
-const image$ = sub$
-  .map((sub) => {
-    console.log("sub$ map", { sub });
-    return getSubImages(sub).retry(2);
-  })
-  .mergeAll();
+const image$ = sub$.switchMap((sub) => {
+  console.log("sub$ map", { sub });
+  return getSubImages(sub).retry(3);
+});
 
-const currentImage$ = Observable.combineLatest(navigation$, image$)
-  .map(([navigationVal, images]) => {
-    console.log({ navigationVal, images });
-    return { navigationVal, images };
+const currentImage$ = Observable.combineLatest(actions$, image$)
+  .map(([actionVal, images]) => {
+    console.log({ actionVal, images });
+    return { navigationVal: actionVal, images };
   })
   .scan(
     ({ index, images: oldImages }, current) => {
@@ -143,16 +147,6 @@ const currentImage$ = Observable.combineLatest(navigation$, image$)
 
     return imagePreload$(url);
   });
-// .switchLatest()
-/*
-  // preload images
-  .map((imageUrls) => {
-    // console.log("image$ map", { imageUrls });
-    return Observable.merge(...imageUrls.map((url) => imagePreload$(url)));
-  })
-  .mergeAll();
-  */
-// .map((result1) => console.log({ result1 }))
 
 currentImage$.subscribe({
   next(url) {
@@ -177,9 +171,10 @@ currentImage$.subscribe({
 // like changing the sub or navigating the images
 
 // each user action stream will start a new image load stream, and a loading placeholder should be shown, then when image is loaded, the placeholder should be hidden (which is done by the other stream)
-
+/*
 const actions = Observable.merge(backClick$, nextClick$, subChange$);
 
 actions.subscribe(() => {
   loading.style.visibility = "visible";
 });
+*/
