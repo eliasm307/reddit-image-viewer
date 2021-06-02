@@ -64,8 +64,8 @@ const subChange$ = Observable.fromEvent(subSelect, "change")
   .do(() => console.warn("subChange$"))
   .share();
 
-/** stream of sub changes with initial sub change */
-const sub$ = Observable.concat(
+/** stream of sub name changes with initial sub name */
+const subNameChange$ = Observable.concat(
   Observable.of(subSelect.value),
   subChange$.map((e) => e.target.value)
 );
@@ -81,14 +81,14 @@ const fallbackUrl = "https://jhusain.github.io/reddit-image-viewer/error.png";
 
 /** Util to create an image preload observable */
 const imagePreload$ = (url) => {
-  console.log("imagePreload$");
+  // console.log("imagePreload$");
   return (
     new Observable((observer) => {
       console.log("imagePreload$ observable", { url });
       const loaderImage = new Image();
       loaderImage.onerror = function (ev) {
         // image failed to load
-        console.log("image load error", { url });
+        console.log("image load error", { url, ev });
         observer.error(ev);
       };
       loaderImage.onload = function () {
@@ -99,7 +99,13 @@ const imagePreload$ = (url) => {
       };
       loaderImage.src = url;
       // observer.next(url);
-      return () => console.log("unsub from imagePreload$");
+      return () => {
+        // stops image loading and removes listeners
+        loaderImage.onerror = null;
+        loaderImage.onload = null;
+        loaderImage.src = "";
+        console.log("unsubscribed from imagePreload$", { url });
+      };
     })
       // .retry(2)
       .catch((e) => {
@@ -111,63 +117,74 @@ const imagePreload$ = (url) => {
   );
 };
 
-const actions$ = Observable.merge(
+/** Actions translated to integer codes */
+const navigationActionChangeCodes$ = Observable.merge(
   backClick$.map((e) => -1),
   nextClick$.map((e) => 1),
-  sub$.map((e) => 0)
+  subNameChange$.map((e) => 0)
 );
 
-const image$ = sub$.switchMap((sub) => {
-  console.log("sub$ map", { sub });
+/** API call to get image url array */
+const imageListLoad$ = subNameChange$.switchMap((sub) => {
+  // console.log("sub$ map", { sub });
   return getSubImages(sub).retry(3);
 });
 
-const currentImage$ = Observable.combineLatest(actions$, image$)
-  .map(([actionVal, images]) => {
-    console.log({ actionVal, images });
-    return { navigationVal: actionVal, images };
+/** Stream of image changes */
+const currentImageChange$ = Observable.combineLatest(
+  navigationActionChangeCodes$,
+  imageListLoad$,
+  subNameChange$
+)
+  .do(() => console.log("---------------------"))
+  .map(([actionVal, images, sub]) => {
+    // console.log({ actionVal, images });
+    return { navigationVal: actionVal, images, sub };
   })
   .scan(
-    ({ index: oldIndex, images: oldImages }, current) => {
-      const { navigationVal, images: newImages, sub: newSub } = current;
+    ({ index: oldIndex, images: oldImages, sub: oldSub }, current) => {
+      const { navigationVal, images: newImages, sub } = current;
 
-      /*
-      if (navigationVal === 0) {
-        index = 0;
-      } else {
-        index += navigationVal;
-      }
-      // keep within array index limits
-      index = Math.min(Math.max(index, 0), newImages.length);
-      */
+      const initialIndex = 0;
 
-      const initialIndex = 95;
-
-      const boundedIndex = (newIndex) =>
+      const boundIndexToLimits = (newIndex) =>
         Math.min(Math.max(newIndex, 0), newImages.length - 1);
 
       // new index, if it is 0 then this means go to initial index
       const index = navigationVal
-        ? boundedIndex(navigationVal + oldIndex)
+        ? boundIndexToLimits(navigationVal + oldIndex)
         : initialIndex;
 
-      return { index, images: newImages, hasChange: oldIndex !== index };
+      // defines if there has been a change that means the image will change
+      const hasChange = oldIndex !== index || oldSub !== sub;
+
+      return {
+        index,
+        sub,
+        images: [...newImages],
+        hasChange,
+      };
     },
-    { index: undefined, images: [], hasChange: undefined }
+    {
+      index: undefined,
+      images: undefined,
+      hasChange: undefined,
+      sub: undefined,
+    }
   )
+  // filter out events that don't change anything
   .filter(({ hasChange }) => {
-    console.log({ hasChange });
+    // console.log({ hasChange });
     return hasChange;
   })
+  // show loader when there is definitely a change incoming
   .do(() => {
     loading.style.visibility = "visible";
   })
+  // pass along data and make sure image is preloaded
   .switchMap(({ index, images }) => {
     const url = images[index];
-
-    console.log({ urlToLoad: url });
-
-    // return imagePreload$(url);
+    // console.log({ urlToLoad: url });
 
     return Observable.combineLatest(
       Observable.of({ index, count: images.length }),
@@ -175,11 +192,11 @@ const currentImage$ = Observable.combineLatest(actions$, image$)
     );
   })
   .map(([{ index, count }, url]) => {
-    console.warn({ index, count, url });
+    // console.warn({ index, count, url });
     return { index, count, url };
   });
 
-currentImage$.subscribe({
+currentImageChange$.subscribe({
   next({ index, count, url }) {
     // hide the loading image
     loading.style.visibility = "hidden";
@@ -199,7 +216,7 @@ currentImage$.subscribe({
 });
 
 // This "actions" Observable is a placeholder. Replace it with an
-// observable that notfies whenever a user performs an action,
+// observable that notifies whenever a user performs an action,
 // like changing the sub or navigating the images
 
 // each user action stream will start a new image load stream, and a loading placeholder should be shown, then when image is loaded, the placeholder should be hidden (which is done by the other stream)
