@@ -115,10 +115,7 @@ const actions$ = Observable.merge(
   backClick$.map((e) => -1),
   nextClick$.map((e) => 1),
   sub$.map((e) => 0)
-).map((action) => {
-  loading.style.visibility = "visible";
-  return action;
-});
+);
 
 const image$ = sub$.switchMap((sub) => {
   console.log("sub$ map", { sub });
@@ -131,22 +128,40 @@ const currentImage$ = Observable.combineLatest(actions$, image$)
     return { navigationVal: actionVal, images };
   })
   .scan(
-    ({ index, images: oldImages }, current) => {
-      const { navigationVal, images: newImages } = current;
+    ({ index: oldIndex, images: oldImages }, current) => {
+      const { navigationVal, images: newImages, sub: newSub } = current;
 
+      /*
       if (navigationVal === 0) {
         index = 0;
       } else {
         index += navigationVal;
       }
-
       // keep within array index limits
       index = Math.min(Math.max(index, 0), newImages.length);
+      */
 
-      return { index, images: newImages };
+      const initialIndex = 95;
+
+      const boundedIndex = (newIndex) =>
+        Math.min(Math.max(newIndex, 0), newImages.length - 1);
+
+      // new index, if it is 0 then this means go to initial index
+      const index = navigationVal
+        ? boundedIndex(navigationVal + oldIndex)
+        : initialIndex;
+
+      return { index, images: newImages, hasChange: oldIndex !== index };
     },
-    { index: 0, images: [] }
+    { index: undefined, images: [], hasChange: undefined }
   )
+  .filter(({ hasChange }) => {
+    console.log({ hasChange });
+    return hasChange;
+  })
+  .do(() => {
+    loading.style.visibility = "visible";
+  })
   .switchMap(({ index, images }) => {
     const url = images[index];
 
