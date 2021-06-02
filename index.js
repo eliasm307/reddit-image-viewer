@@ -3,6 +3,7 @@ const backButton = document.getElementById("back");
 const subSelect = document.getElementById("sub");
 const img = document.getElementById("img");
 const loading = document.getElementById("loading");
+const counter = document.getElementById("counter");
 
 const LOADING_ERROR_URL =
   "https://jhusain.github.io/reddit-image-viewer/error.png";
@@ -164,10 +165,11 @@ const currentImage$ = Observable.combineLatest(actions$, image$)
   });
 
 currentImage$.subscribe({
-  next({ url }) {
+  next({ index, count, url }) {
     // hide the loading image
     loading.style.visibility = "hidden";
 
+    counter.innerHTML = `${index + 1}/${count}`;
     // console.log("result", { loadedImage: url });
 
     // set Image source to URL
