@@ -21,7 +21,7 @@ function getSubImages(sub) {
   console.warn("getSubImages");
   const cachedImages = localStorage.getItem(sub);
   if (cachedImages) {
-    console.log({ cachedImages });
+    // console.log({ cachedImages });
     return Observable.of(JSON.parse(cachedImages));
   } else {
     const url = `https://www.reddit.com/r/${sub}/.json?limit=200&show=all`;
@@ -55,9 +55,13 @@ function getSubImages(sub) {
 // image in the current sub which is navigated by the user.
 
 // user action streams
-const backClick$ = Observable.fromEvent(backButton, "click");
+const backClick$ = Observable.fromEvent(backButton, "click").do(() =>
+  console.log("backClick$")
+);
 const nextClick$ = Observable.fromEvent(nextButton, "click");
-const subChange$ = Observable.fromEvent(subSelect, "change");
+const subChange$ = Observable.fromEvent(subSelect, "change")
+  .do(() => console.warn("subChange$"))
+  .share();
 
 /** stream of sub changes with initial sub change */
 const sub$ = Observable.concat(
@@ -88,7 +92,7 @@ const imagePreload$ = (url) => {
       };
       loaderImage.onload = function () {
         // image loaded successfully
-        console.log("image loaded", { url });
+        // console.log("image loaded", { url });
         observer.next(url);
         observer.complete();
       };
@@ -98,7 +102,9 @@ const imagePreload$ = (url) => {
     })
       // .retry(2)
       .catch((e) => {
+        /*
         console.log("imagePreload$ error preloading image", { url });
+        */
         return Observable.of(fallbackUrl);
       })
   );
@@ -145,15 +151,24 @@ const currentImage$ = Observable.combineLatest(actions$, image$)
 
     console.log({ urlToLoad: url });
 
-    return imagePreload$(url);
+    // return imagePreload$(url);
+
+    return Observable.combineLatest(
+      Observable.of({ index, count: images.length }),
+      imagePreload$(url)
+    );
+  })
+  .map(([{ index, count }, url]) => {
+    console.warn({ index, count, url });
+    return { index, count, url };
   });
 
 currentImage$.subscribe({
-  next(url) {
+  next({ url }) {
     // hide the loading image
     loading.style.visibility = "hidden";
 
-    console.log("result", { loadedImage: url });
+    // console.log("result", { loadedImage: url });
 
     // set Image source to URL
     img.src = url;
