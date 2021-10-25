@@ -1,9 +1,9 @@
-const nextButton = document.getElementById("next");
-const backButton = document.getElementById("back");
-const subSelect = document.getElementById("sub");
-const img = document.getElementById("img");
-const loading = document.getElementById("loading");
-const counter = document.getElementById("counter");
+const nextButtonElement = document.getElementById("next");
+const backButtonElement = document.getElementById("back");
+const subSelectElement = document.getElementById("sub");
+const currentImageElement = document.getElementById("img");
+const loadingImageElement = document.getElementById("loading");
+const counterElement = document.getElementById("counter");
 
 const LOADING_ERROR_URL =
   "https://jhusain.github.io/reddit-image-viewer/error.png";
@@ -19,10 +19,8 @@ const Observable = Rx.Observable;
 //   ...
 // ]
 function getSubImages(sub) {
-  console.warn("getSubImages");
   const cachedImages = localStorage.getItem(sub);
   if (cachedImages) {
-    // console.log({ cachedImages });
     return Observable.of(JSON.parse(cachedImages));
   } else {
     const url = `https://www.reddit.com/r/${sub}/.json?limit=200&show=all`;
@@ -38,13 +36,11 @@ function getSubImages(sub) {
           .then((res) => res.json())
           .then((data) => {
             const images = data.data.children.map((image) => image.data.url);
-            console.log({ images });
-            localStorage.setItem(sub, JSON.stringify(images));
+            localStorage.setItem(sub, JSON.stringify(images)); // local cache
             return images;
           })
           .catch((e) => {
-            console.error("getSubImages error", e);
-            throw Error(e);
+            throw Error(JSON.stringify(e));
           })
       )
     );
@@ -56,113 +52,103 @@ function getSubImages(sub) {
 // image in the current sub which is navigated by the user.
 
 // user action streams
-const backClick$ = Observable.fromEvent(backButton, "click").do(() =>
-  console.log("backClick$")
-);
-const nextClick$ = Observable.fromEvent(nextButton, "click");
-const subChange$ = Observable.fromEvent(subSelect, "change")
-  .do(() => console.warn("subChange$"))
-  .share();
-
-/** stream of sub name changes with initial sub name */
+const backClick$ = Observable.fromEvent(backButtonElement, "click").share();
+const nextClick$ = Observable.fromEvent(nextButtonElement, "click").share();
+const subChange$ = Observable.fromEvent(subSelectElement, "change").share();
 const subNameChange$ = Observable.concat(
-  Observable.of(subSelect.value),
+  Observable.of(subSelectElement.value), // initial sub
   subChange$.map((e) => e.target.value)
 );
 
-/*
-const images = Observable.of(
-  "https://upload.wikimedia.org/wikipedia/commons/3/36/Hopetoun_falls.jpg"
-);
-*/
-
-/** Fallback if image could not be loaded */
-const fallbackUrl = "https://jhusain.github.io/reddit-image-viewer/error.png";
+const loadImageToElement = (element, url) => {};
 
 /** Util to create an image preload observable */
-const imagePreload$ = (url) => {
-  // console.log("imagePreload$");
+const preloadImage = (url) => {
   return (
     new Observable((observer) => {
-      console.log("imagePreload$ observable", { url });
-      const loaderImage = new Image();
-      loaderImage.onerror = function (ev) {
-        // image failed to load
-        console.log("image load error", { url, ev });
-        observer.error(ev);
+      const tempImagePreloadElement = new Image();
+      tempImagePreloadElement.onerror = function (event) {
+        observer.error({ url, event, message: "image load error" });
       };
-      loaderImage.onload = function () {
-        // image loaded successfully
-        // console.log("image loaded", { url });
+      tempImagePreloadElement.onload = function () {
         observer.next(url);
         observer.complete();
       };
-      loaderImage.src = url;
-      // observer.next(url);
+
+      // start image loading
+      tempImagePreloadElement.src = url;
+
+      // unsubscription function
       return () => {
         // stops image loading and removes listeners
-        loaderImage.onerror = null;
-        loaderImage.onload = null;
-        loaderImage.src = "";
-        console.log("unsubscribed from imagePreload$", { url });
+        tempImagePreloadElement.onerror = null;
+        tempImagePreloadElement.onload = null;
+        tempImagePreloadElement.src = "";
       };
     })
-      // .retry(2)
-      .catch((e) => {
-        /*
-        console.log("imagePreload$ error preloading image", { url });
-        */
-        return Observable.of(fallbackUrl);
+      // retry twice before actually throwing if loading failed
+      .retry(2)
+      // use fallback if it really failed to load
+      .catch((error) => {
+        console.error(error);
+        return Observable.of(LOADING_ERROR_URL);
       })
   );
 };
 
-/** Actions translated to integer codes */
-const navigationActionChangeCodes$ = Observable.merge(
+/** Stream of image navigation actions mapped to codes */
+const navigationActionCode$ = Observable.merge(
   backClick$.map((e) => -1),
   nextClick$.map((e) => 1),
   subNameChange$.map((e) => 0)
+  // todo add keyboard actions
 );
 
 /** API call to get image url array */
 const imageListLoad$ = subNameChange$.switchMap((sub) => {
-  // console.log("sub$ map", { sub });
+  // if getting the images fails, retries up to 3 times before actually throwing
   return getSubImages(sub).retry(3);
 });
 
-/** Stream of image changes */
+/** Stream of image changes, gets the latest value of each stream */
 const currentImageChange$ = Observable.combineLatest(
-  navigationActionChangeCodes$,
+  navigationActionCode$,
   imageListLoad$,
   subNameChange$
 )
   .do(() => console.log("---------------------"))
-  .map(([actionVal, images, sub]) => {
-    // console.log({ actionVal, images });
-    return { navigationVal: actionVal, images, sub };
+  .map(([actionCode, images, sub]) => {
+    return { actionCode: actionCode, images, sub };
   })
   .scan(
-    ({ index: oldIndex, images: oldImages, sub: oldSub }, current) => {
-      const { navigationVal, images: newImages, sub } = current;
+    (oldAccumulatedState, newIncomingState) => {
+      // from previous observable
+      const { actionCode, images: newImages, sub: newSub } = newIncomingState;
 
-      const initialIndex = 0;
+      // from last return of this observable
+      const {
+        index: oldIndex,
+        images: oldImages,
+        sub: oldSub,
+      } = oldAccumulatedState;
 
       const boundIndexToLimits = (newIndex) =>
         Math.min(Math.max(newIndex, 0), newImages.length - 1);
 
       // new index, if it is 0 then this means go to initial index
-      const index = navigationVal
-        ? boundIndexToLimits(navigationVal + oldIndex)
-        : initialIndex;
+      const INITIAL_INDEX = 0;
+      const newIndex =
+        actionCode === 0
+          ? INITIAL_INDEX
+          : boundIndexToLimits(oldIndex + actionCode);
 
-      // defines if there has been a change that means the image will change
-      const hasChange = oldIndex !== index || oldSub !== sub;
+      const indexOrSubHasChanged = oldIndex !== newIndex || oldSub !== newSub;
 
       return {
-        index,
-        sub,
+        index: newIndex,
+        sub: newSub,
         images: [...newImages],
-        hasChange,
+        hasChange: indexOrSubHasChanged,
       };
     },
     {
@@ -170,42 +156,36 @@ const currentImageChange$ = Observable.combineLatest(
       images: undefined,
       hasChange: undefined,
       sub: undefined,
+      navigationVal: 0,
     }
   )
   // filter out events that don't change anything
-  .filter(({ hasChange }) => {
-    // console.log({ hasChange });
-    return hasChange;
-  })
+  .filter(({ hasChange }) => hasChange)
   // show loader when there is definitely a change incoming
   .do(() => {
-    loading.style.visibility = "visible";
+    loadingImageElement.style.visibility = "visible";
   })
   // pass along data and make sure image is preloaded
   .switchMap(({ index, images }) => {
     const url = images[index];
-    // console.log({ urlToLoad: url });
 
+    // waits for the image to preload
     return Observable.combineLatest(
       Observable.of({ index, count: images.length }),
-      imagePreload$(url)
+      preloadImage(url)
     );
   })
   .map(([{ index, count }, url]) => {
-    // console.warn({ index, count, url });
     return { index, count, url };
   });
 
 currentImageChange$.subscribe({
   next({ index, count, url }) {
-    // hide the loading image
-    loading.style.visibility = "hidden";
+    counterElement.innerText = `${index + 1}/${count}`;
 
-    counter.innerHTML = `${index + 1}/${count}`;
-    // console.log("result", { loadedImage: url });
-
-    // set Image source to URL
-    img.src = url;
+    // set the pre-loaded image source to the current image URL
+    currentImageElement.src = url;
+    loadingImageElement.style.visibility = "hidden";
   },
   error(e) {
     const error =

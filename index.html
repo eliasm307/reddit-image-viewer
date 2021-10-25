@@ -1,61 +1,69 @@
 <html>
-<head>
-  <style>
-    body {
-      background-color:black
-    }
-    #back {
-      position: fixed;
-      bottom: 0px;
-      margin: 10px;
-    }
-    #sub {
-      position: fixed;
-      left: 50%;
-      transform: translateX(-50%);
-      bottom: 0px;
-      margin-bottom: 10px;
-    }
-    #next {
-      position: fixed;
-      bottom: 0px;
-      right: 0px;
-      margin: 10px;
-    }
-    #img {
-      position:fixed;
-      display: block;
-      left: 50%;
-      top: 50%;
-      transform: translateX(-50%) translateY(-50%);
-      max-width:640px;
-      max-height:480px;
-      width: auto;
-      height: auto;
-    }
-    #loading {
-      position:fixed;
-      display: block;
-      left: 50%;
-      top: 50%;
-      transform: translateX(-50%) translateY(-50%);
-      width: auto;
-      height: auto;
-      visibility: hidden
-    }
-  </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/rxjs/5.5.0/Rx.js"></script>
-</head>
-<body>
-  <div id="counter" style="text-align:center;"></div>
-  <img id="img">
-  <img id="loading" src="https://jhusain.github.io/reddit-image-viewer/loading.svg">
-  <button id="back">Back</button>
-  <select id="sub">
-    <option>pics</option>
-    <option>cute</option>
-  </select>
-  <button id="next">Next</button>
-  <script src="index.js"></script>
-</body>
+  <head>
+    <style>
+      body {
+        background-color: black;
+      }
+      #counter {
+        text-align: center;
+        color: white;
+        font-weight: bold;
+      }
+      #back {
+        position: fixed;
+        bottom: 0px;
+        margin: 10px;
+      }
+      #sub {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 0px;
+        margin-bottom: 10px;
+      }
+      #next {
+        position: fixed;
+        bottom: 0px;
+        right: 0px;
+        margin: 10px;
+      }
+      #img {
+        position: fixed;
+        display: block;
+        left: 50%;
+        top: 50%;
+        transform: translateX(-50%) translateY(-50%);
+        max-width: 640px;
+        max-height: 480px;
+        width: auto;
+        height: auto;
+      }
+      #loading {
+        position: fixed;
+        display: block;
+        left: 50%;
+        top: 50%;
+        transform: translateX(-50%) translateY(-50%);
+        width: auto;
+        height: auto;
+        visibility: hidden;
+      }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/rxjs/5.5.0/Rx.js"></script>
+  </head>
+  <body>
+    <div id="counter"></div>
+    <img id="img" />
+    <img
+      id="loading"
+      src="https://jhusain.github.io/reddit-image-viewer/loading.svg"
+    />
+    <button id="back">Back</button>
+    <select id="sub">
+      <option>pics</option>
+      <option>cute</option>
+    </select>
+    <button id="next">Next</button>
+    <script src="index.js"></script>
+  </body>
 </html>
