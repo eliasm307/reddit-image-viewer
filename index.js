@@ -23,14 +23,14 @@ function getSubImages(sub) {
   if (cachedImages) {
     return Observable.of(JSON.parse(cachedImages));
   } else {
-    const url = `https://www.reddit.com/r/${sub}/.json?limit=200&show=all`;
+    const subImagesRequestEndpoint = `https://www.reddit.com/r/${sub}/.json?limit=200&show=all`;
 
     // defer ensure new Observable (and therefore) promise gets created
     // for each subscription. This ensures functions like retry will
     // issue additional requests.
     return Observable.defer(() =>
       Observable.fromPromise(
-        fetch(url, {
+        fetch(subImagesRequestEndpoint, {
           method: "GET",
         })
           .then((res) => res.json())
@@ -60,31 +60,37 @@ const subNameChange$ = Observable.concat(
   subChange$.map((e) => e.target.value)
 );
 
-const loadImageToElement = (element, url) => {};
+currentImageElement.onload = function () {
+  loadingImageElement.style.visibility = "hidden";
+};
 
 /** Util to create an image preload observable */
-const preloadImage = (url) => {
+const preloadImageUrl = (url) => {
   return (
     new Observable((observer) => {
-      const tempImagePreloadElement = new Image();
-      tempImagePreloadElement.onerror = function (event) {
-        observer.error({ url, event, message: "image load error" });
-      };
-      tempImagePreloadElement.onload = function () {
+      const tempPreloadImageElement = new Image();
+      tempPreloadImageElement.onerror = (event) =>
+        observer.error({ url, event, message: "image pre-load error" });
+
+      currentImageElement.onerror = (event) =>
+        observer.error({ url, event, message: "current image load error" });
+
+      tempPreloadImageElement.onload = function () {
         observer.next(url);
         observer.complete();
       };
 
-      // start image loading
-      tempImagePreloadElement.src = url;
+      // start image pre-loading
+      tempPreloadImageElement.src = url;
 
       // unsubscription function
-      return () => {
+      const unsubscriber = () => {
         // stops image loading and removes listeners
-        tempImagePreloadElement.onerror = null;
-        tempImagePreloadElement.onload = null;
-        tempImagePreloadElement.src = "";
+        tempPreloadImageElement.onerror = null;
+        tempPreloadImageElement.onload = null;
+        tempPreloadImageElement.src = ""; // stops image loading in process
       };
+      return unsubscriber;
     })
       // retry twice before actually throwing if loading failed
       .retry(2)
@@ -116,7 +122,6 @@ const currentImageChange$ = Observable.combineLatest(
   imageListLoad$,
   subNameChange$
 )
-  .do(() => console.log("---------------------"))
   .map(([actionCode, images, sub]) => {
     return { actionCode: actionCode, images, sub };
   })
@@ -161,31 +166,25 @@ const currentImageChange$ = Observable.combineLatest(
   )
   // filter out events that don't change anything
   .filter(({ hasChange }) => hasChange)
-  // show loader when there is definitely a change incoming
-  .do(() => {
+  // show loader and update counter when there is definitely a change incoming
+  .do(({ index, images }) => {
+    counterElement.innerText = `${index + 1}/${images.length}`;
     loadingImageElement.style.visibility = "visible";
   })
   // pass along data and make sure image is preloaded
   .switchMap(({ index, images }) => {
     const url = images[index];
-
-    // waits for the image to preload
-    return Observable.combineLatest(
-      Observable.of({ index, count: images.length }),
-      preloadImage(url)
-    );
+    console.log("load image...", { url, index });
+    return preloadImageUrl(url);
   })
-  .map(([{ index, count }, url]) => {
-    return { index, count, url };
+  .do((url) => {
+    // set the pre-loaded image source to the current image URL
+    currentImageElement.src = url;
   });
 
 currentImageChange$.subscribe({
-  next({ index, count, url }) {
-    counterElement.innerText = `${index + 1}/${count}`;
-
-    // set the pre-loaded image source to the current image URL
-    currentImageElement.src = url;
-    loadingImageElement.style.visibility = "hidden";
+  next(url) {
+    console.log("loaded image", { url });
   },
   error(e) {
     const error =
