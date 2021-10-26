@@ -19,7 +19,7 @@ const Observable = Rx.Observable;
 //   ...
 // ]
 function getSubImages(sub) {
-  const cachedImages = localStorage.getItem(sub);
+  const cachedImages = sessionStorage.getItem(sub);
   if (cachedImages) {
     return Observable.of(JSON.parse(cachedImages));
   } else {
@@ -36,7 +36,7 @@ function getSubImages(sub) {
           .then((res) => res.json())
           .then((data) => {
             const images = data.data.children.map((image) => image.data.url);
-            localStorage.setItem(sub, JSON.stringify(images)); // local cache
+            sessionStorage.setItem(sub, JSON.stringify(images)); // local cache
             return images;
           })
           .catch((e) => {
@@ -60,6 +60,7 @@ const subNameChange$ = Observable.concat(
   subChange$.map((e) => e.target.value)
 );
 
+// simple 1 to 1 listener
 currentImageElement.onload = function () {
   loadingImageElement.style.visibility = "hidden";
 };
@@ -72,10 +73,8 @@ const preloadImageUrl = (url) => {
       tempPreloadImageElement.onerror = (event) =>
         observer.error({ url, event, message: "image pre-load error" });
 
-      currentImageElement.onerror = (event) =>
-        observer.error({ url, event, message: "current image load error" });
-
       tempPreloadImageElement.onload = function () {
+        console.log("image pre-loaded", { url });
         observer.next(url);
         observer.complete();
       };
@@ -102,6 +101,8 @@ const preloadImageUrl = (url) => {
   );
 };
 
+// observable that notifies whenever a user performs an action,
+// like changing the sub or navigating the images
 /** Stream of image navigation actions mapped to codes */
 const navigationActionCode$ = Observable.merge(
   backClick$.map((e) => -1),
@@ -174,35 +175,18 @@ const currentImageChange$ = Observable.combineLatest(
   // pass along data and make sure image is preloaded
   .switchMap(({ index, images }) => {
     const url = images[index];
-    console.log("load image...", { url, index });
     return preloadImageUrl(url);
   })
   .do((url) => {
-    // set the pre-loaded image source to the current image URL
+    // set the pre-loaded image url as the current image URL
     currentImageElement.src = url;
   });
 
 currentImageChange$.subscribe({
   next(url) {
-    console.log("loaded image", { url });
+    console.log("changed image", { url });
   },
   error(e) {
-    const error =
-      "I'm having trouble loading the images for that sub. Please wait a while, reload, and then try again later.";
-    // alert(error);
-    console.error("image$.subscribe", { error, e });
+    console.error("currentImageChange$ stream error", { error, e });
   },
 });
-
-// This "actions" Observable is a placeholder. Replace it with an
-// observable that notifies whenever a user performs an action,
-// like changing the sub or navigating the images
-
-// each user action stream will start a new image load stream, and a loading placeholder should be shown, then when image is loaded, the placeholder should be hidden (which is done by the other stream)
-/*
-const actions = Observable.merge(backClick$, nextClick$, subChange$);
-
-actions.subscribe(() => {
-  loading.style.visibility = "visible";
-});
-*/
